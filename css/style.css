@@ -1,0 +1,158 @@
+:root {
+  --sort: #0a0a0a;
+  --hvid: #f5f5f2;
+  --graa: #8a8a86;
+  --volt: #d4ff00;
+  --kort: rgba(12, 12, 12, 0.78);
+  --rund: 22px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  background: var(--sort);
+  color: var(--hvid);
+  font-family: "Inter", system-ui, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.skaerm { position: fixed; inset: 0; display: none; }
+.skaerm.aktiv { display: flex; }
+
+/* ---------- Startskærm ---------- */
+#start {
+  flex-direction: column;
+  justify-content: space-between;
+  padding: max(20px, env(safe-area-inset-top)) 22px max(22px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(120% 70% at 85% 10%, rgba(212, 255, 0, 0.16), transparent 60%),
+    radial-gradient(90% 60% at 0% 100%, rgba(63, 208, 255, 0.10), transparent 60%),
+    var(--sort);
+}
+.start-top { display: flex; align-items: center; justify-content: space-between; }
+.brand { font-family: "Archivo Black", sans-serif; letter-spacing: 0.04em; font-size: 20px; }
+.pille {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.12em;
+  padding: 5px 10px; border-radius: 99px; background: var(--volt); color: var(--sort);
+}
+.overline { text-transform: uppercase; letter-spacing: 0.18em; font-size: 12px; color: var(--graa); margin-bottom: 14px; }
+h1 {
+  font-family: "Archivo Black", sans-serif;
+  font-size: clamp(64px, 22vw, 120px);
+  line-height: 0.86;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+.volt { color: var(--volt); }
+.intro { margin-top: 20px; max-width: 34ch; color: #cfcfca; line-height: 1.5; font-size: 15px; }
+.start-bund { display: grid; gap: 10px; }
+.disclaimer { font-size: 11px; color: var(--graa); text-align: center; margin-top: 6px; }
+
+.knap {
+  font: 800 16px "Inter", sans-serif;
+  border: 0; border-radius: 99px; padding: 17px 22px; cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+.knap:active { transform: scale(0.97); }
+.primaer { background: var(--volt); color: var(--sort); }
+.sekundaer { background: transparent; color: var(--hvid); border: 1.5px solid rgba(255, 255, 255, 0.25); }
+
+/* ---------- Oplevelse ---------- */
+#oplevelse { background: var(--sort); }
+#oplevelse.tredje {
+  background:
+    radial-gradient(80% 55% at 50% 42%, #2b2b2b 0%, #121212 55%, #070707 100%);
+}
+#scene { position: absolute; inset: 0; }
+#scene video { object-fit: cover; }
+
+.topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: max(14px, env(safe-area-inset-top)) 16px 14px;
+  background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
+}
+.ikon {
+  width: 40px; height: 40px; border-radius: 50%; border: 0;
+  background: rgba(255, 255, 255, 0.14); color: var(--hvid); font-size: 20px;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+
+/* Scan-hint */
+.scan {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  transition: opacity 0.3s ease;
+}
+.scan.skjult { opacity: 0; }
+.scan p {
+  font-weight: 600; font-size: 14px; padding: 8px 14px; border-radius: 99px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.ramme { position: relative; width: 62vw; max-width: 300px; aspect-ratio: 3 / 4; overflow: hidden; }
+.ramme i { position: absolute; width: 34px; height: 34px; border: 4px solid var(--volt); }
+.ramme i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 14px 0 0 0; }
+.ramme i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 14px 0 0; }
+.ramme i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 14px; }
+.ramme i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
+.linje {
+  position: absolute; left: 8%; right: 8%; height: 2px; top: 0;
+  background: var(--volt); box-shadow: 0 0 18px 4px rgba(212, 255, 0, 0.6);
+  animation: scan 2.2s ease-in-out infinite;
+}
+@keyframes scan { 0%, 100% { top: 6%; } 50% { top: 94%; } }
+
+/* Produktkort */
+.kort {
+  position: absolute; left: 12px; right: 12px; z-index: 5;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  padding: 16px 14px 14px; border-radius: var(--rund);
+  background: var(--kort); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid; gap: 12px;
+  transform: translateY(0); transition: transform 0.45s cubic-bezier(.2, .9, .2, 1), opacity 0.3s ease;
+}
+.kort.skjult { transform: translateY(130%); opacity: 0; }
+.kort-top { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 6px; }
+.info { text-align: center; min-height: 64px; }
+.info > * { transition: opacity 0.25s ease, transform 0.25s ease; }
+.info.skift > * { opacity: 0; transform: translateY(6px); }
+.farve { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--graa); }
+#navn { font-family: "Archivo Black", sans-serif; font-size: 22px; text-transform: uppercase; line-height: 1.15; margin: 3px 0 2px; }
+.pris { font-weight: 800; color: var(--volt); }
+.pil {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, 0.1); color: var(--hvid); font-size: 28px; line-height: 1;
+}
+.pil:active { background: rgba(255, 255, 255, 0.22); }
+.prikker { display: flex; justify-content: center; gap: 7px; }
+.prikker span { width: 7px; height: 7px; border-radius: 99px; background: rgba(255, 255, 255, 0.25); transition: all 0.3s ease; }
+.prikker span.aktiv { width: 22px; background: var(--volt); }
+.hint { text-align: center; font-size: 11px; color: var(--graa); }
+
+.toast {
+  position: absolute; left: 50%; top: 84px; z-index: 9; transform: translate(-50%, -20px);
+  padding: 10px 16px; border-radius: 99px; font-size: 13px; font-weight: 600;
+  background: var(--hvid); color: var(--sort); opacity: 0; pointer-events: none;
+  transition: all 0.3s ease; white-space: nowrap;
+}
+.toast.vis { opacity: 1; transform: translate(-50%, 0); }
+
+.loader {
+  position: absolute; inset: 0; z-index: 8; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: var(--sort); font-size: 14px; color: var(--graa);
+}
+.loader.vis { display: flex; }
+.loader div {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.15); border-top-color: var(--volt);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* MindAR's egne overlays skjules – vi har vores eget scan-UI */
+.mindar-ui-overlay { display: none !important; }

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <title>Plakat-generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: #222; color: #eee; font: 14px Inter, sans-serif; display: grid; gap: 12px; padding: 16px; }
+    canvas#plakat { width: 360px; height: auto; box-shadow: 0 10px 40px #000; }
+    button { font: 700 14px Inter, sans-serif; padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <p>Genererer kampagneplakaten (AR-target) og kompilerer den til MindAR. Kør <code>lavAlt()</code> eller tryk på knappen.</p>
+  <div><button id="koer">Lav plakat + .mind</button> <span id="status"></span></div>
+  <canvas id="plakat" width="1200" height="1600"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js" type="module"></script>
+  <script type="module">
+    import * as THREE from "three";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+    import { BRAND, SKO, lavSko } from "../js/sko.js";
+
+    const W = 1200, H = 1600;
+    const VOLT = "#d4ff00";
+    const status = (t) => (document.getElementById("status").textContent = t);
+
+    // Deterministisk tilfældighed, så plakaten bliver ens hver gang
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+
+    async function renderSko() {
+      const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      r.setSize(1150, 760);
+      r.outputColorSpace = THREE.SRGBColorSpace;
+      r.toneMapping = THREE.ACESFilmicToneMapping;
+      const sc = new THREE.Scene();
+      sc.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+      const sol = new THREE.DirectionalLight(0xffffff, 2);
+      sol.position.set(1, 2, 2);
+      sc.add(sol);
+      const kant = new THREE.DirectionalLight(0xd4ff00, 1.2);
+      kant.position.set(-2, 0.5, -1);
+      sc.add(kant);
+      const sko = await lavSko(SKO[0]);
+      sko.rotation.set(0.15, -0.55, 0.12);
+      sc.add(sko);
+      const cam = new THREE.PerspectiveCamera(30, 1150 / 760, 0.01, 20);
+      cam.position.set(0, 0.45, 2.2);
+      cam.lookAt(0, 0.2, 0);
+      r.render(sc, cam);
+      return r.domElement;
+    }
+
+    async function tegnPlakat() {
+      await document.fonts.load("230px 'Archivo Black'");
+      await document.fonts.load("800 28px Inter");
+      const c = document.getElementById("plakat");
+      const g = c.getContext("2d");
+      seed = 7;
+
+      // Baggrund
+      g.fillStyle = "#0a0a0a";
+      g.fillRect(0, 0, W, H);
+
+      // Volt-bånd på skrå bag skoen
+      g.save();
+      g.translate(W / 2, 980);
+      g.rotate(-0.32);
+      g.fillStyle = VOLT;
+      g.fillRect(-1000, -170, 2000, 340);
+      g.fillStyle = "#0a0a0a";
+      g.font = "800 34px Inter";
+      const baandTekst = "AIR PULSE  ✕  STEP INTO AR  ✕  ";
+      const bredde = g.measureText(baandTekst).width;
+      for (let x = -1000; x < 1000; x += bredde) g.fillText(baandTekst, x, 150);
+      g.restore();
+
+      // Små kryds og tal over hele plakaten (giver kameraet mange genkendelsespunkter)
+      g.strokeStyle = "rgba(255,255,255,0.35)";
+      g.lineWidth = 3;
+      g.fillStyle = "rgba(255,255,255,0.45)";
+      g.font = "600 18px Inter";
+      for (let i = 0; i < 70; i++) {
+        const x = 40 + rnd() * (W - 80), y = 40 + rnd() * (H - 80);
+        if (rnd() < 0.6) {
+          g.beginPath();
+          g.moveTo(x - 9, y); g.lineTo(x + 9, y);
+          g.moveTo(x, y - 9); g.lineTo(x, y + 9);
+          g.stroke();
+        } else {
+          g.fillText(String(Math.floor(rnd() * 99)).padStart(2, "0"), x, y);
+        }
+      }
+
+      // Overskrift
+      g.fillStyle = "#f5f5f2";
+      g.font = "230px 'Archivo Black'";
+      g.fillText("STEP", 60, 330);
+      g.fillText("INTO", 60, 540);
+      g.fillStyle = VOLT;
+      g.fillText("AR.", 60, 750);
+
+      // Brand + årstal
+      g.fillStyle = "#f5f5f2";
+      g.font = "40px 'Archivo Black'";
+      g.fillText(BRAND.navn, 60, 110);
+      g.fillStyle = VOLT;
+      g.beginPath();
+      g.roundRect(W - 230, 72, 170, 52, 26);
+      g.fill();
+      g.fillStyle = "#0a0a0a";
+      g.font = "800 24px Inter";
+      g.fillText("AR · 2026", W - 205, 107);
+
+      // Lodret tekst i højre side
+      g.save();
+      g.translate(W - 60, 300);
+      g.rotate(Math.PI / 2);
+      g.fillStyle = "rgba(255,255,255,0.7)";
+      g.font = "800 26px Inter";
+      g.fillText("AIR PULSE — KOLLEKTION 01 / 04", 0, 0);
+      g.restore();
+
+      // Skoen
+      const sko = await renderSko();
+      g.save();
+      g.shadowColor = "rgba(0,0,0,0.6)";
+      g.shadowBlur = 40;
+      g.shadowOffsetY = 30;
+      g.drawImage(sko, 25, 640);
+      g.restore();
+
+      // Farveprikker for kollektionen
+      const farver = SKO.map((s) => "#" + s.farver.overdel.toString(16).padStart(6, "0"));
+      farver.forEach((f, i) => {
+        g.beginPath();
+        g.arc(80 + i * 64, 1420, 22, 0, Math.PI * 2);
+        g.fillStyle = f;
+        g.fill();
+        g.lineWidth = 4;
+        g.strokeStyle = i === 0 ? VOLT : "rgba(255,255,255,0.4)";
+        g.stroke();
+      });
+
+      // Bundtekst
+      g.fillStyle = "#f5f5f2";
+      g.font = "800 30px Inter";
+      g.fillText("SCAN  ·  SWIPE  ·  STEP", 60, 1520);
+      g.fillStyle = "rgba(255,255,255,0.6)";
+      g.font = "400 22px Inter";
+      g.fillText("Scan QR-koden og peg kameraet mod plakaten.", 60, 1365);
+      g.textAlign = "right";
+      g.font = "600 16px Inter";
+      g.fillStyle = "rgba(255,255,255,0.45)";
+      g.fillText(BRAND.disclaimer, W - 60, 1560);
+      g.textAlign = "left";
+      return c;
+    }
+
+    async function gem(navn, blob) {
+      const svar = await fetch("/gem/" + navn, { method: "PUT", body: blob });
+      if (!svar.ok) throw new Error("Kunne ikke gemme " + navn);
+    }
+
+    async function lavAlt() {
+      status("Tegner plakat…");
+      const c = await tegnPlakat();
+      const png = await new Promise((ok) => c.toBlob(ok, "image/png"));
+      await gem("plakat.png", png);
+
+      status("Kompilerer AR-target…");
+      const img = new Image();
+      img.src = URL.createObjectURL(png);
+      await img.decode();
+      const compiler = new window.MINDAR.IMAGE.Compiler();
+      await compiler.compileImageTargets([img], (p) => status("Kompilerer AR-target… " + p.toFixed(0) + "%"));
+      const data = await compiler.exportData();
+      await gem("plakat.mind", new Blob([data]));
+      status("Færdig: assets/plakat.png + assets/plakat.mind");
+      return "ok";
+    }
+
+    window.tegnPlakat = tegnPlakat;
+    window.lavAlt = lavAlt;
+    document.getElementById("koer").onclick = lavAlt;
+    tegnPlakat();
+  </script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Step Into AR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Startskærm -->
+  <section id="start" class="skaerm aktiv">
+    <div class="start-top">
+      <span class="brand" data-brand></span>
+      <span class="pille">AR</span>
+    </div>
+    <div class="start-midt">
+      <p class="overline">Ny kollektion · 2026</p>
+      <h1>Step<br>into<br><span class="volt">AR.</span></h1>
+      <p class="intro">Peg kameraet mod kampagneplakaten og se skoene springe ud i den virkelige verden. Swipe for at skifte model.</p>
+    </div>
+    <div class="start-bund">
+      <button id="startAR" class="knap primaer">Start AR-oplevelse</button>
+      <button id="start3D" class="knap sekundaer">Se i 3D uden plakat</button>
+      <p class="disclaimer" data-disclaimer></p>
+    </div>
+  </section>
+
+  <!-- AR / 3D-visning -->
+  <section id="oplevelse" class="skaerm">
+    <div id="scene"></div>
+
+    <div class="topbar">
+      <button id="tilbage" class="ikon" aria-label="Tilbage">&#8592;</button>
+      <span class="brand" data-brand></span>
+      <span class="pille" id="tilstand">AR</span>
+    </div>
+
+    <div id="scan" class="scan">
+      <div class="ramme"><i></i><i></i><i></i><i></i><div class="linje"></div></div>
+      <p>Peg kameraet mod plakaten</p>
+    </div>
+
+    <div id="kort" class="kort">
+      <div class="kort-top">
+        <button class="pil" id="forrige" aria-label="Forrige sko">&#8249;</button>
+        <div class="info">
+          <p class="farve" id="farve"></p>
+          <h2 id="navn"></h2>
+          <p class="pris" id="pris"></p>
+        </div>
+        <button class="pil" id="naeste" aria-label="Næste sko">&#8250;</button>
+      </div>
+      <div class="prikker" id="prikker"></div>
+      <button class="knap primaer" id="koeb">Køb nu</button>
+      <p class="hint">Swipe for næste sko · træk for at dreje</p>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <div id="loader" class="loader"><div></div><p>Starter kamera…</p></div>
+  </section>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
