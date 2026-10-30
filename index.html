@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#0b0b0c">
-  <meta name="description" content="Scan plakaten og se Air Pulse-kollektionen i 3D på dit eget bord. Studieprojekt.">
+  <meta name="description" content="Stil Air Pulse-kollektionen på dit eget gulv i AR. Studieprojekt.">
   <title>Air Pulse · Step into AR</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,7 +40,7 @@
       <div class="hero-sko" id="heroSko" aria-hidden="true"></div>
 
       <div class="hero-bund">
-        <p class="hero-tekst">Fire farver af Air Pulse, direkte på dit bord. Scan plakaten og drej skoen med fingeren.</p>
+        <p class="hero-tekst">Fire farver af Air Pulse, direkte på dit gulv. Peg kameraet, tryk, og drej skoen med fingeren.</p>
         <div class="handlinger">
           <button id="startAR" class="knap knap-primaer">
             <i class="ph-bold ph-scan"></i><span>Start AR</span>
@@ -49,13 +49,14 @@
             <i class="ph ph-cube"></i><span>Se i 3D</span>
           </button>
         </div>
+        <button id="startPlakat" class="tekstlink"><i class="ph ph-image-square"></i><span>Har du plakaten? Scan den</span></button>
 
         <!-- Vises kun på computer: AR giver mest mening på telefonen -->
         <div class="telefon-kort">
           <div class="qr" id="qrDesktop"></div>
           <div>
             <p class="telefon-titel">Bedst på telefonen</p>
-            <p class="telefon-tekst">Scan koden, og peg kameraet mod plakaten på skærmen.</p>
+            <p class="telefon-tekst">Scan koden, og stil skoen på gulvet eller bordet foran dig.</p>
           </div>
         </div>
       </div>
@@ -71,7 +72,10 @@
     <div class="topbar">
       <button id="tilbage" class="ikonknap" aria-label="Tilbage"><i class="ph ph-arrow-left"></i></button>
       <span class="ordmaerke" data-brand></span>
-      <span class="tilstand" id="tilstand">AR</span>
+      <div class="topbar-hoejre">
+        <button id="flyt" class="ikonknap" aria-label="Flyt skoen" hidden><i class="ph ph-arrows-out-cardinal"></i></button>
+        <span class="tilstand" id="tilstand">AR</span>
+      </div>
     </div>
 
     <div id="scan" class="scan" aria-live="polite">
@@ -80,6 +84,11 @@
         <i></i><i></i><i></i><i></i>
       </div>
       <p class="scan-tekst">Find plakaten og hold telefonen roligt</p>
+    </div>
+
+    <!-- Markørløs AR: find gulv eller bord og tryk -->
+    <div id="placer" class="placer skjult" aria-live="polite">
+      <p class="scan-tekst"><i class="ph ph-hand-tap"></i><span id="placerTekst">Peg mod gulvet, og tryk for at stille skoen</span></p>
     </div>
 
     <div id="guide" class="guide" aria-hidden="true">
@@ -105,7 +114,7 @@
     </div>
 
     <div id="loader" class="loader">
-      <div class="loader-plakat"><img src="assets/plakat.png" alt=""></div>
+      <div class="loader-ikon"><i class="ph ph-sneaker-move"></i></div>
       <p>Starter kameraet</p>
     </div>
   </section>

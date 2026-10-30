@@ -178,9 +178,9 @@ if (window.qrcode) {
 /* ================================================================== */
 /* Oplevelse: fælles scene for AR og 3D                                 */
 /* ================================================================== */
-let modus = null; // "ar" | "3d"
+let modus = null; // "plakat" | "xr" | "kamera" | "3d"
 let renderer, scene, camera, mindar, anker, ur;
-let foelger;     // følger plakaten med udglatning (AR)
+let foelger;     // følger plakaten med udglatning, eller står på gulvet (markørløs AR)
 let scene3d;     // "scenen": skygge + drejeskive + sko
 let drejeskive, plads, ring, skygge;
 let index = 0;
@@ -361,7 +361,8 @@ let sidstRoert = -1e9;
     if (!start || fingre.size) return;
     const dx = e.clientX - start.x, dy = e.clientY - start.y;
     const dt = performance.now() - start.t;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 280) {
+    if (modus === "kamera" && !placeret && Math.hypot(dx, dy) < 12 && dt < 400) placerVedSigte();
+    else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 280) {
       fart = 0;
       visSko(index + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
     }
@@ -371,25 +372,149 @@ let sidstRoert = -1e9;
   flade.addEventListener("pointercancel", slip);
 })();
 
-/* ---------------- Plakat på bord eller væg ---------------- */
+/* ---------------- Telefonens orientering ---------------- */
+// beta bruges til plakat på bord/væg, hele orienteringen styrer kameraet i kamera-tilstand
 let beta = 70;
-window.addEventListener("deviceorientation", (e) => { if (e.beta != null) beta = Math.abs(e.beta); });
+const gyro = { a: 0, b: 0, g: 0, har: false };
+window.addEventListener("deviceorientation", (e) => {
+  if (e.beta != null) beta = Math.abs(e.beta);
+  if (e.alpha == null) return;
+  gyro.a = e.alpha; gyro.b = e.beta; gyro.g = e.gamma; gyro.har = true;
+});
 async function spoergOmBevaegelse() {
   try {
     if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission) {
       await DeviceOrientationEvent.requestPermission();
     }
-  } catch (_) { /* uden tilladelse antages væg/skærm */ }
+  } catch (_) { /* uden tilladelse står kameraet stille */ }
 }
+
+// Telefonens orientering som kvaternion (kameraet kigger ud af bagsiden af telefonen)
+const Q_SKAERM = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+const Z_AKSE = new THREE.Vector3(0, 0, 1);
+const gEuler = new THREE.Euler(), gQ = new THREE.Quaternion(), gTmp = new THREE.Quaternion();
+function gyroRetning() {
+  const d = THREE.MathUtils.DEG2RAD;
+  gEuler.set(gyro.b * d, gyro.a * d, -gyro.g * d, "YXZ");
+  const skaerm = (screen.orientation?.angle ?? window.orientation ?? 0) * d;
+  return gQ.setFromEuler(gEuler).multiply(Q_SKAERM).multiply(gTmp.setFromAxisAngle(Z_AKSE, -skaerm));
+}
+
 const QBORD = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
 const QVAEG = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.16, 0, 0));
 const PBORD = new THREE.Vector3(0, -0.06, 0.0);
 const PVAEG = new THREE.Vector3(0, -0.36, 0.16);
 
+/* ---------------- Markørløs AR: gulv eller bord ---------------- */
+const SKO_STR = 0.34; // skoen i naturlig størrelse (scenen er i meter)
+const HOEJDE = 0.8;   // kamera-tilstand: antaget afstand fra telefonen ned til underlaget
+let placeret = false;
+let harSigte = false;
+let sigte, video, hitKilde;
+const sigtePos = new THREE.Vector3(), hitPos = new THREE.Vector3(), retning = new THREE.Vector3();
+const mHit = new THREE.Matrix4();
+
+let xrStoette = false;
+navigator.xr?.isSessionSupported?.("immersive-ar").then((ja) => (xrStoette = ja)).catch(() => {});
+
+// Sigtet: en ring på underlaget, der viser hvor skoen lander
+function lavSigte() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: VOLT, transparent: true, opacity: 0.9, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.085, 0.1, 64), mat);
+  const prik = new THREE.Mesh(new THREE.CircleGeometry(0.012, 24), mat);
+  for (const m of [ring, prik]) { m.rotation.x = -Math.PI / 2; m.position.y = 0.002; g.add(m); }
+  g.add(kontaktSkygge(0.34, 0.34, 0.3));
+  g.visible = false;
+  return g;
+}
+
+function byggMarkoerloes() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(63, innerWidth / innerHeight, 0.01, 30);
+  lys(scene, renderer, 1);
+  foelger = new THREE.Group();
+  foelger.add(byggScene(false));
+  foelger.visible = false;
+  scene3d.scale.setScalar(SKO_STR);
+  saetOpacitet(scene3d, 0);
+  scene.add(foelger);
+  sigte = lavSigte();
+  scene.add(sigte);
+}
+
+function visPlacering(tekst) { $("#placerTekst").textContent = tekst; }
+
+function placerVedSigte() {
+  if (placeret || !harSigte) return;
+  placeret = true;
+  // Skoen står på sigtet og vender mod brugeren i en skrå trekvart-vinkel
+  const kam = camera.getWorldPosition(new THREE.Vector3());
+  foelger.position.copy(sigtePos);
+  foelger.rotation.set(0, Math.atan2(kam.x - sigtePos.x, kam.z - sigtePos.z), 0);
+  drejeskive.rotation.y = -0.5;
+  sigte.visible = false;
+  $("#placer").classList.add("skjult");
+  $("#ark").classList.remove("skjult");
+  $("#flyt").hidden = false;
+  navigator.vibrate?.(12);
+
+  drejeskive.position.y = 0.35;
+  tween(800, (t) => (drejeskive.position.y = 0.35 * (1 - t)), easeOutBack);
+  ringPuls();
+  if (foersteFund) {
+    foersteFund = false;
+    visSko(index, 1, false).then(visGuide);
+  }
+}
+
+function flyt() {
+  placeret = false;
+  $("#placer").classList.remove("skjult");
+  $("#ark").classList.add("skjult");
+  $("#flyt").hidden = true;
+}
+
+function opdaterSigte(dt, xrFrame) {
+  if (modus === "kamera") {
+    if (gyro.har) camera.quaternion.slerp(gyroRetning(), daemp(18, dt));
+    camera.updateMatrixWorld();
+  }
+  if (placeret) return;
+
+  let fundet = false;
+  if (modus === "xr" && xrFrame && hitKilde) {
+    const pose = xrFrame.getHitTestResults(hitKilde)[0]?.getPose(renderer.xr.getReferenceSpace());
+    if (pose) {
+      hitPos.setFromMatrixPosition(mHit.fromArray(pose.transform.matrix));
+      fundet = true;
+    }
+  } else if (modus === "kamera") {
+    // Uden rigtig gulvgenkendelse: hvor rammer midten af skærmen et antaget gulv?
+    camera.getWorldDirection(retning);
+    const vandret = Math.max(Math.hypot(retning.x, retning.z), 1e-3);
+    const afstand = THREE.MathUtils.clamp((HOEJDE * vandret) / Math.max(-retning.y, 0.05), 0.4, 2.2);
+    hitPos.set((retning.x / vandret) * afstand, -HOEJDE, (retning.z / vandret) * afstand);
+    fundet = true;
+  }
+
+  if (fundet) {
+    if (harSigte) sigtePos.lerp(hitPos, daemp(16, dt));
+    else sigtePos.copy(hitPos);
+    sigte.position.copy(sigtePos);
+    sigte.scale.setScalar(reduceret ? 1 : 1 + Math.sin(performance.now() * 0.004) * 0.06);
+  }
+  sigte.visible = fundet;
+  if (modus === "xr" && fundet !== harSigte) {
+    visPlacering(fundet ? "Tryk for at stille skoen her" : "Bevæg telefonen langsomt for at finde gulvet");
+  }
+  harSigte = fundet;
+}
+
 /* ---------------- Render-loop ---------------- */
 const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mSkala = new THREE.Vector3();
 
-function frame() {
+function frame(tid, xrFrame) {
   const nu = performance.now();
   const dt = Math.min(0.05, ur.getDelta());
   koerAnimationer(nu);
@@ -401,10 +526,11 @@ function frame() {
   const svaev = reduceret ? 0 : Math.sin(nu * 0.0014) * 0.012;
   plads.position.y = 0.035 + svaev;
 
-  const zMaal = (modus === "ar" ? 0.62 : 1) * zoom;
+  const zMaal = (modus === "plakat" ? 0.62 : modus === "3d" ? 1 : SKO_STR) * zoom;
   scene3d.scale.setScalar(THREE.MathUtils.lerp(scene3d.scale.x, zMaal, daemp(10, dt)));
 
-  if (modus === "ar") {
+  let maal = 1;
+  if (modus === "plakat") {
     // Følg plakaten blødt i stedet for at hoppe med hver tracking-måling
     if (anker.group.visible) {
       anker.group.matrix.decompose(mPos, mQuat, mSkala);
@@ -420,13 +546,21 @@ function frame() {
       sidstSet = nu;
     }
     // Hold skoen et øjeblik, hvis trackingen kort taber plakaten, og fade så ud
-    const maal = nu - sidstSet < 500 ? 1 : 0;
+    maal = nu - sidstSet < 500 ? 1 : 0;
+  } else if (modus === "xr" || modus === "kamera") {
+    opdaterSigte(dt, xrFrame);
+    maal = placeret ? 1 : 0;
+  }
+
+  if (modus !== "3d") {
     const før = tilstede;
     tilstede += (maal - tilstede) * daemp(maal ? 9 : 6, dt);
     if (Math.abs(tilstede - før) > 0.001) saetOpacitet(scene3d, tilstede);
     foelger.visible = tilstede > 0.01;
-    if (maal === 0 && tilstede < 0.05) harPose = false;
+  }
 
+  if (modus === "plakat") {
+    if (maal === 0 && tilstede < 0.05) harPose = false;
     const tiltMaal = THREE.MathUtils.clamp((beta - 35) / 30, 0, 1);
     tilt += (tiltMaal - tilt) * daemp(3, dt);
     scene3d.quaternion.slerpQuaternions(QBORD, QVAEG, tilt);
@@ -434,18 +568,111 @@ function frame() {
   }
 
   // Skyggen bliver lysere, når skoen svæver højere, og følger fade'en i AR
-  skygge.material.opacity = (1 - svaev * 12) * (modus === "ar" ? tilstede : 1);
+  skygge.material.opacity = (1 - svaev * 12) * (modus === "3d" ? 1 : tilstede);
   renderer.render(scene, camera);
 }
 
-/* ---------------- AR ---------------- */
-async function startAR() {
-  modus = "ar";
+/* ---------------- AR uden plakat ---------------- */
+function forberedMarkoerloes() {
+  visSkaerm("oplevelse");
+  $("#oplevelse").classList.remove("studie");
+  $("#tilstand").textContent = "AR";
+  $("#scan").classList.add("skjult");
+  $("#ark").classList.add("skjult");
+  $("#placer").classList.remove("skjult");
+  visPlacering("Peg mod gulvet, og tryk for at stille skoen");
+  hentSko(index);
+}
+
+// Android (Chrome): WebXR med rigtig gulv- og bordgenkendelse
+async function startXR() {
+  modus = "xr";
+  const session = await navigator.xr.requestSession("immersive-ar", {
+    requiredFeatures: ["hit-test"],
+    optionalFeatures: ["dom-overlay"],
+    domOverlay: { root: $("#oplevelse") },
+  });
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  opsaetRenderer(renderer);
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType("local");
+  byggMarkoerloes();
+  await renderer.xr.setSession(session);
+  hitKilde = await session.requestHitTestSource({ space: await session.requestReferenceSpace("viewer") });
+  session.addEventListener("select", placerVedSigte);
+  session.addEventListener("end", () => { if (modus === "xr") afslut(); });
+  $("#oplevelse").classList.add("xr");
+  visPlacering("Bevæg telefonen langsomt for at finde gulvet");
+  ur = new THREE.Clock();
+  renderer.setAnimationLoop(frame);
+}
+
+// iPhone og alt andet: kamerabillede bag skoen, telefonens gyroskop holder den på plads
+async function startKamera() {
+  modus = "kamera";
+  const stroem = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false,
+  });
+  video = document.createElement("video");
+  video.className = "fyld";
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.srcObject = stroem;
+  $("#scene").appendChild(video);
+  await video.play();
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  opsaetRenderer(renderer);
+  renderer.domElement.classList.add("fyld");
+  $("#scene").appendChild(renderer.domElement);
+  byggMarkoerloes();
+  if (!gyro.har) camera.rotation.set(-0.62, 0, 0); // uden gyroskop: kig skråt ned
+  tilpasKamera();
+  window.addEventListener("resize", tilpasKamera);
+  ur = new THREE.Clock();
+  renderer.setAnimationLoop(frame);
+}
+
+function tilpasKamera() {
+  if (modus !== "kamera") return;
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+
+function startAR() {
+  pauseHero(true);
+  forberedMarkoerloes();
+  $("#loader").classList.add("vis");
+  // Ingen await før requestSession/requestPermission: begge kræver at kaldet sker direkte fra trykket
+  const forsoeg = xrStoette
+    ? startXR().catch((err) => {
+        console.warn("WebXR startede ikke, bruger kamera-tilstand", err);
+        stopOplevelse();
+        forberedMarkoerloes();
+        return startKamera();
+      })
+    : spoergOmBevaegelse().then(startKamera);
+  forsoeg
+    .catch((err) => {
+      console.error(err);
+      afslut();
+      toast(`<i class="ph-bold ph-camera-slash"></i>Kameraet startede ikke. Prøv 3D-visningen`);
+    })
+    .finally(() => $("#loader").classList.remove("vis"));
+}
+
+/* ---------------- AR med plakaten ---------------- */
+async function startPlakat() {
+  modus = "plakat";
   visSkaerm("oplevelse");
   $("#oplevelse").classList.remove("studie");
   $("#tilstand").textContent = "AR";
   $("#loader").classList.add("vis");
   $("#ark").classList.add("skjult");
+  $("#placer").classList.add("skjult");
   $("#scan").classList.remove("skjult");
 
   try {
@@ -493,9 +720,7 @@ async function startAR() {
     renderer.setAnimationLoop(frame);
   } catch (err) {
     console.error(err);
-    stopOplevelse();
-    visSkaerm("start");
-    pauseHero(false);
+    afslut();
     toast(`<i class="ph-bold ph-camera-slash"></i>Kameraet startede ikke. Prøv 3D-visningen`);
   } finally {
     $("#loader").classList.remove("vis");
@@ -509,6 +734,7 @@ function start3D() {
   $("#oplevelse").classList.add("studie");
   $("#tilstand").textContent = "3D";
   $("#scan").classList.add("skjult");
+  $("#placer").classList.add("skjult");
   $("#ark").classList.remove("skjult");
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -542,35 +768,53 @@ function visSkaerm(id) {
 }
 
 function stopOplevelse() {
+  modus = null; // først, så WebXR's "end" ikke kalder tilbage hertil
   if (renderer) renderer.setAnimationLoop(null);
+  const session = renderer?.xr?.getSession?.();
+  if (session) session.end().catch(() => {});
+  hitKilde?.cancel?.();
+  hitKilde = null;
+  if (video) { video.srcObject?.getTracks().forEach((t) => t.stop()); video = null; }
   if (mindar) { try { mindar.stop(); } catch (_) {} mindar = null; }
   if (renderer) renderer.dispose();
   window.removeEventListener("resize", tilpas3D);
+  window.removeEventListener("resize", tilpasKamera);
+  $("#oplevelse").classList.remove("xr");
   $("#scene").innerHTML = "";
+  $("#placer").classList.add("skjult");
+  $("#flyt").hidden = true;
   plads?.clear();
   animationer.length = 0;
   skifter = false;
   harPose = false;
+  placeret = false;
+  harSigte = false;
   foersteFund = true;
   tilstede = 0;
   zoom = 1;
-  modus = null;
 }
 
-$("#startAR").addEventListener("click", async () => {
+function afslut() {
+  stopOplevelse();
+  visSkaerm("start");
+  pauseHero(false);
+}
+
+// Tryk på knapper i WebXR må ikke også placere skoen
+for (const el of [".topbar", "#ark"]) $(el).addEventListener("beforexrselect", (e) => e.preventDefault());
+
+$("#startAR").addEventListener("click", startAR);
+$("#startPlakat").addEventListener("click", async () => {
   await spoergOmBevaegelse();
   pauseHero(true);
-  startAR();
+  startPlakat();
 });
 $("#start3D").addEventListener("click", () => {
   pauseHero(true);
   start3D();
 });
-$("#tilbage").addEventListener("click", () => {
-  stopOplevelse();
-  visSkaerm("start");
-  pauseHero(false);
-});
+$("#tilbage").addEventListener("click", afslut);
+$("#flyt").addEventListener("click", flyt);
 
 /* ---------------- Start ---------------- */
 opdaterInfo();

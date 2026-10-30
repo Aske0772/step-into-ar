@@ -131,6 +131,15 @@ button { font: inherit; color: inherit; }
 .knap-sekundaer { background: transparent; color: var(--tekst); border: 1px solid var(--streg); }
 .knap-sekundaer:hover { border-color: rgba(245, 245, 240, 0.3); }
 .fuld { width: 100%; }
+.tekstlink {
+  justify-self: start; display: inline-flex; align-items: center; gap: var(--a2);
+  margin-top: calc(var(--a2) * -1); padding: var(--a1) 0; border: 0; background: none; cursor: pointer;
+  color: var(--tekst-2); font: inherit; font-size: var(--t-sm);
+  text-decoration: underline; text-decoration-color: var(--streg); text-underline-offset: 4px;
+  transition: color 0.15s var(--ease);
+}
+.tekstlink:hover { color: var(--tekst); }
+.tekstlink i { font-size: 16px; }
 
 .telefon-kort { display: none; }
 
@@ -171,15 +180,20 @@ button { font: inherit; color: inherit; }
 }
 #scene { position: absolute; inset: 0; touch-action: none; }
 #scene video { object-fit: cover; }
+#scene .fyld { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* WebXR: kameraet ligger bag DOM-overlayet, så baggrunden skal være gennemsigtig */
+#oplevelse.xr { background: transparent; }
+#oplevelse:xr-overlay { background: transparent; }
 
 .topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 5;
-  display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; text-align: center;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; text-align: center;
   padding: max(var(--a3), env(safe-area-inset-top)) var(--a4) var(--a4);
   background: linear-gradient(rgba(11, 11, 12, 0.6), transparent);
 }
-.tilstand {
-  justify-self: end; font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.08em;
+.topbar-hoejre { justify-self: end; display: flex; align-items: center; gap: var(--a2); }
+.topbar #tilbage { justify-self: start; }
+.tilstand { font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.08em;
   padding: 4px 10px; border-radius: 999px; background: var(--glas); border: 1px solid var(--streg);
 }
 
@@ -191,6 +205,7 @@ button { font: inherit; color: inherit; }
   transition: transform 0.15s var(--ease), background-color 0.2s var(--ease);
 }
 .ikonknap:active { transform: scale(0.94); }
+.ikonknap[hidden] { display: none; }
 .ikonknap.lille { width: 40px; height: 40px; font-size: 18px; }
 
 /* Scan-tilstand: viser selve plakaten, så man ved hvad man skal kigge efter */
@@ -214,6 +229,16 @@ button { font: inherit; color: inherit; }
   font-size: var(--t-sm); font-weight: 500; padding: var(--a2) var(--a4); border-radius: 999px;
   background: var(--glas); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
+
+/* Placeringshjælp i markørløs AR */
+.placer {
+  position: absolute; left: 0; right: 0; bottom: calc(max(var(--a5), env(safe-area-inset-bottom)) + var(--a5)); z-index: 3;
+  display: grid; justify-items: center; pointer-events: none;
+  transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.placer.skjult { opacity: 0; transform: translateY(8px); }
+.placer .scan-tekst { display: flex; align-items: center; gap: var(--a2); white-space: nowrap; }
+.placer i { font-size: 20px; }
 
 /* Engangs-guide efter skoen er fundet */
 .guide {
@@ -286,8 +311,7 @@ button { font: inherit; color: inherit; }
   background: var(--flade); color: var(--tekst-2); font-size: var(--t-sm);
 }
 .loader.vis { display: grid; }
-.loader-plakat { width: 120px; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; animation: aande 1.6s ease-in-out infinite; }
-.loader-plakat img { width: 100%; height: 100%; object-fit: cover; }
+.loader-ikon { font-size: 56px; color: var(--tekst); animation: aande 1.6s ease-in-out infinite; }
 @keyframes aande { 50% { opacity: 0.45; transform: scale(0.97); } }
 
 /* MindAR's egne overlays erstattes af vores */
@@ -296,8 +320,8 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .linje > span, .klar .linje > span { animation: none; transform: none; }
   .hero-sko, .hero-bund { transition: opacity 0.3s linear; transform: none; }
-  .guide.vis i, .loader-plakat { animation: none; }
-  .ark, .scan, .toast, .guide { transition-duration: 0.01s; }
+  .guide.vis i, .loader-ikon { animation: none; }
+  .ark, .scan, .placer, .toast, .guide { transition-duration: 0.01s; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
