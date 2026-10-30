@@ -7,4 +7,4 @@ WebAR-kampagne (studieprojekt, multimediedesign): scan QR-koden, peg kameraet mo
 
 Bygget med three.js og MindAR (billedgenkendelse i browseren).
 
-Studieprojekt – ikke tilknyttet eller godkendt af Nike.
+Studieprojekt. Ikke tilknyttet eller godkendt af Nike.

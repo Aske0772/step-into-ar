@@ -6,7 +6,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 export const BRAND = {
   navn: "NIKE",
   kampagne: "STEP INTO AR",
-  disclaimer: "Studieprojekt – ikke tilknyttet eller godkendt af Nike.",
+  disclaimer: "Studieprojekt. Ikke tilknyttet eller godkendt af Nike.",
 };
 
 export const SKO = [

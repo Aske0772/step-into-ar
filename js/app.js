@@ -3,304 +3,449 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { BRAND, SKO, lavSko } from "./sko.js";
 
 const $ = (s) => document.querySelector(s);
-const ACCENT = 0xd4ff00;
+const VOLT = 0xd4ff00;
+const reduceret = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 document.querySelectorAll("[data-brand]").forEach((el) => (el.textContent = BRAND.navn));
 document.querySelectorAll("[data-disclaimer]").forEach((el) => (el.textContent = BRAND.disclaimer));
 
-/* ------------------------------------------------------------------ */
-/* Tilstand                                                             */
-/* ------------------------------------------------------------------ */
-let index = 0;
-let modus = null;          // "ar" | "3d"
-let renderer, scene, camera, mindar, ur;
-let scenen;                // Group: podie + drejeskive (placeres på plakaten eller frit i 3D)
-let drejeskive;            // Group der drejes med fingeren
-let plads;                 // Group der holder den aktuelle sko
-let ring, partikler;
-let synlig = false;        // er plakaten fundet (AR) / er scenen vist (3D)
-let tilt = 0.5;            // 0 = plakat på bordet, 1 = plakat på væg/skærm
-const skoCache = new Map();
+/* ================================================================== */
+/* Små hjælpere                                                         */
+/* ================================================================== */
+const easeOutExpo = (t) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t));
+const easeOutBack = (t) => 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);
+const easeIn = (t) => t * t * t;
+const daemp = (fart, dt) => 1 - Math.exp(-fart * dt); // billedrate-uafhængig udglatning
+
 const animationer = [];
-
-/* ------------------------------------------------------------------ */
-/* Små animationshjælpere                                               */
-/* ------------------------------------------------------------------ */
-const easeOutBack = (t) => 1 + 2.4 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2);
-const easeInCubic = (t) => t * t * t;
-
 function tween(varighed, opdater, ease = (t) => t) {
+  if (reduceret) varighed = Math.min(varighed, 120);
   return new Promise((ok) => animationer.push({ start: performance.now(), varighed, opdater, ease, ok }));
 }
-
 function koerAnimationer(nu) {
   for (let i = animationer.length - 1; i >= 0; i--) {
     const a = animationer[i];
     const t = Math.min(1, (nu - a.start) / a.varighed);
     a.opdater(a.ease(t));
-    if (t >= 1) {
-      animationer.splice(i, 1);
-      a.ok();
-    }
+    if (t >= 1) { animationer.splice(i, 1); a.ok(); }
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* Scene-indhold (fælles for AR og 3D)                                  */
-/* ------------------------------------------------------------------ */
-function byggScene() {
-  scenen = new THREE.Group();
-
-  // Podie: mørk glasskive + lysende ring
-  const skive = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.62, 0.66, 0.035, 64),
-    new THREE.MeshPhysicalMaterial({ color: 0x111111, roughness: 0.25, metalness: 0.2, clearcoat: 1 })
-  );
-  skive.position.y = -0.02;
-  scenen.add(skive);
-
-  ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.64, 0.012, 16, 96),
-    new THREE.MeshBasicMaterial({ color: ACCENT })
-  );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.0;
-  scenen.add(ring);
-
-  // Blød kontaktskygge under skoen
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const g = c.getContext("2d");
-  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
-  grad.addColorStop(0, "rgba(0,0,0,0.55)");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  const skygge = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.2, 0.6),
-    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false })
-  );
-  skygge.rotation.x = -Math.PI / 2;
-  skygge.position.y = 0.0;
-  scenen.add(skygge);
-
-  // Svævende lyspartikler omkring skoen
-  const antal = 60;
-  const pos = new Float32Array(antal * 3);
-  for (let i = 0; i < antal; i++) {
-    const v = Math.random() * Math.PI * 2;
-    const r = 0.35 + Math.random() * 0.45;
-    pos.set([Math.cos(v) * r, Math.random() * 0.9, Math.sin(v) * r], i * 3);
-  }
-  const pg = new THREE.BufferGeometry();
-  pg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  partikler = new THREE.Points(
-    pg,
-    new THREE.PointsMaterial({ color: ACCENT, size: 0.018, transparent: true, opacity: 0.8, depthWrite: false })
-  );
-  scenen.add(partikler);
-
-  drejeskive = new THREE.Group();
-  drejeskive.position.y = 0.06;
-  scenen.add(drejeskive);
-  plads = new THREE.Group();
-  drejeskive.add(plads);
-
-  return scenen;
-}
-
-function lys(sc, r) {
-  const pmrem = new THREE.PMREMGenerator(r);
-  sc.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  const sol = new THREE.DirectionalLight(0xffffff, 1.6);
-  sol.position.set(1, 2, 1.5);
-  sc.add(sol);
-  const kant = new THREE.DirectionalLight(0xd4ff00, 0.6);
-  kant.position.set(-1.5, 0.5, -1);
-  sc.add(kant);
 }
 
 function opsaetRenderer(r) {
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.toneMapping = THREE.ACESFilmicToneMapping;
-  r.toneMappingExposure = 1.05;
+  r.toneMappingExposure = 1.0;
   r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 }
 
-/* ------------------------------------------------------------------ */
-/* Sko: hent, vis og skift                                              */
-/* ------------------------------------------------------------------ */
+function lys(sc, r, styrke = 1) {
+  sc.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+  const nøgle = new THREE.DirectionalLight(0xffffff, 1.4 * styrke);
+  nøgle.position.set(1.2, 2.2, 1.6);
+  sc.add(nøgle);
+  const kant = new THREE.DirectionalLight(0xdff5ff, 0.7 * styrke);
+  kant.position.set(-1.6, 0.8, -1.2);
+  sc.add(kant);
+}
+
+// Blød, rund skygge, der "sætter" skoen på underlaget
+function radialTekstur(indre, ydre) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0, indre);
+  grad.addColorStop(1, ydre);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function kontaktSkygge(bredde = 1.25, dybde = 0.55, styrke = 0.6) {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(bredde, dybde),
+    new THREE.MeshBasicMaterial({ map: radialTekstur(`rgba(0,0,0,${styrke})`, "rgba(0,0,0,0)"), transparent: true, depthWrite: false })
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.001;
+  m.renderOrder = -1;
+  return m;
+}
+
+// Placér kameraet, så `bredde` enheder fylder skærmens bredde (eller ~70% af højden på brede skærme)
+function kameraTilpas(cam, bredde, maalY) {
+  const synligH = Math.max(bredde / cam.aspect, bredde * 0.72);
+  const afstand = synligH / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+  cam.position.set(0, maalY + afstand * 0.22, afstand);
+  cam.lookAt(0, maalY, 0);
+  cam.updateProjectionMatrix();
+}
+
+function saetOpacitet(obj, a) {
+  obj.traverse((o) => {
+    if (!o.material || o.userData.egenOpacitet) return;
+    for (const m of [].concat(o.material)) {
+      if (m.userData.basis === undefined) m.userData.basis = m.opacity;
+      m.transparent = a < 1 || m.userData.basis < 1;
+      m.opacity = m.userData.basis * a;
+    }
+  });
+}
+
+/* ================================================================== */
+/* Hero: skoen på forsiden                                              */
+/* ================================================================== */
+const hero = { renderer: null, kører: false };
+
+async function startHero() {
+  const boks = $("#heroSko");
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  opsaetRenderer(r);
+  boks.appendChild(r.domElement);
+  const sc = new THREE.Scene();
+  lys(sc, r, 1.1);
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 50);
+
+  const holder = new THREE.Group();
+  sc.add(holder);
+  const skygge = kontaktSkygge(1.3, 0.6, 0.55);
+  holder.add(skygge);
+  const sko = await lavSko(SKO[0]);
+  const drej = new THREE.Group();
+  drej.add(sko);
+  holder.add(drej);
+
+  function tilpas() {
+    const w = boks.clientWidth, h = boks.clientHeight;
+    r.setSize(w, h, false);
+    cam.aspect = w / h;
+    const mobil = w < h;
+    // Mobil: skoen i midterfeltet mellem overskrift og knapper. Computer: stor til højre.
+    kameraTilpas(cam, mobil ? 1.55 : 1.8, mobil ? 0.32 : 0.24);
+  }
+  tilpas();
+  new ResizeObserver(tilpas).observe(boks);
+
+  // Tilt efter musen / fingeren (lille og blød)
+  const tilt = { x: 0, y: 0, mx: 0, my: 0 };
+  window.addEventListener("pointermove", (e) => {
+    tilt.mx = (e.clientX / innerWidth - 0.5) * 0.5;
+    tilt.my = (e.clientY / innerHeight - 0.5) * 0.25;
+  });
+
+  // Entré: skoen falder på plads og lander blødt (sidens ene store øjeblik)
+  drej.position.y = 0.9;
+  drej.rotation.set(0.5, -2.4, 0.3);
+  skygge.scale.setScalar(0.3);
+  tween(1300, (t) => {
+    drej.position.y = 0.9 * (1 - t);
+    drej.rotation.set(0.5 * (1 - t), -2.4 + 1.85 * t, 0.3 * (1 - t));
+    skygge.scale.setScalar(0.3 + 0.7 * t);
+  }, easeOutBack);
+
+  const ur = new THREE.Clock();
+  hero.renderer = r;
+  hero.loop = () => {
+    const dt = Math.min(0.05, ur.getDelta());
+    const nu = performance.now();
+    koerAnimationer(nu);
+    tilt.x += (tilt.my - tilt.x) * daemp(4, dt);
+    tilt.y += (tilt.mx - tilt.y) * daemp(4, dt);
+    holder.rotation.set(tilt.x, tilt.y + (reduceret ? 0 : nu * 0.00018), 0);
+    const svaev = reduceret ? 0 : Math.sin(nu * 0.0013) * 0.02;
+    sko.position.y = 0.04 + svaev;
+    skygge.material.opacity = 1 - svaev * 8;
+    r.render(sc, cam);
+  };
+  hero.kører = true;
+  r.setAnimationLoop(hero.loop);
+}
+
+function pauseHero(pause) {
+  if (!hero.renderer) return;
+  hero.renderer.setAnimationLoop(pause ? null : hero.loop);
+}
+
+// QR til telefonen (vises kun på computer)
+if (window.qrcode) {
+  const q = qrcode(0, "M");
+  q.addData(location.href.split("#")[0]);
+  q.make();
+  $("#qrDesktop").innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
+
+/* ================================================================== */
+/* Oplevelse: fælles scene for AR og 3D                                 */
+/* ================================================================== */
+let modus = null; // "ar" | "3d"
+let renderer, scene, camera, mindar, anker, ur;
+let foelger;     // følger plakaten med udglatning (AR)
+let scene3d;     // "scenen": skygge + drejeskive + sko
+let drejeskive, plads, ring, skygge;
+let index = 0;
+let zoom = 1;
+let tilt = 0.6;  // 0 = plakat på bord, 1 = plakat på væg/skærm
+let tilstede = 0; // 0..1: hvor synlig skoen er (fade ind/ud)
+let sidstSet = -1e9;
+let harPose = false;
+let foersteFund = true;
+const skoCache = new Map();
+
+function byggScene(studie) {
+  scene3d = new THREE.Group();
+
+  if (studie) {
+    // Blødt "studiegulv" i stedet for et neon-podie
+    const gulv = new THREE.Mesh(
+      new THREE.CircleGeometry(1.4, 64),
+      new THREE.MeshBasicMaterial({ map: radialTekstur("rgba(255,255,255,0.07)", "rgba(255,255,255,0)"), transparent: true, depthWrite: false })
+    );
+    gulv.rotation.x = -Math.PI / 2;
+    scene3d.add(gulv);
+  }
+
+  skygge = kontaktSkygge(1.3, 0.6, studie ? 0.75 : 0.55);
+  skygge.userData.egenOpacitet = true; // styres i frame()
+  scene3d.add(skygge);
+
+  // Ring der breder sig én gang, når skoen lander (feedback: "placeret")
+  ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.48, 0.5, 96),
+    new THREE.MeshBasicMaterial({ color: VOLT, transparent: true, opacity: 0, depthWrite: false })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.002;
+  ring.userData.egenOpacitet = true; // styres af ringPuls()
+  scene3d.add(ring);
+
+  drejeskive = new THREE.Group();
+  scene3d.add(drejeskive);
+  plads = new THREE.Group();
+  drejeskive.add(plads);
+  return scene3d;
+}
+
+function ringPuls() {
+  tween(900, (t) => {
+    const s = 0.6 + t * 0.9;
+    ring.scale.set(s, s, s);
+    ring.material.opacity = 0.7 * (1 - t);
+  }, easeOutExpo);
+}
+
 async function hentSko(i) {
   if (!skoCache.has(i)) skoCache.set(i, lavSko(SKO[i]));
   return skoCache.get(i);
 }
 
 let skifter = false;
-async function visSko(ny, retning = 1) {
-  if (skifter) return;
+async function visSko(ny, retning = 1, bruger = true) {
+  ny = (ny + SKO.length) % SKO.length;
+  if (skifter || (ny === index && plads.children.length)) return;
   skifter = true;
+  if (bruger) navigator.vibrate?.(8); // lille haptisk "klik" ved skift
   const gammel = plads.children[0];
-  index = (ny + SKO.length) % SKO.length;
+  index = ny;
   opdaterInfo();
+  skjulGuide();
 
   if (gammel) {
     await tween(260, (t) => {
-      gammel.scale.setScalar(1 - t);
-      gammel.position.x = -retning * 0.5 * t;
-      gammel.rotation.y = -retning * t * 1.2;
-    }, easeInCubic);
+      gammel.position.x = -retning * 0.55 * t;
+      gammel.scale.setScalar(1 - 0.35 * t);
+      saetOpacitet(gammel, 1 - t);
+    }, easeIn);
     plads.remove(gammel);
+    saetOpacitet(gammel, 1);
+    gammel.position.x = 0;
+    gammel.scale.setScalar(1);
   }
 
   const sko = await hentSko(index);
-  sko.scale.setScalar(0.001);
-  sko.position.set(retning * 0.5, 0, 0);
-  sko.rotation.set(0, retning * 1.5, 0);
+  sko.position.set(retning * 0.55, 0, 0);
+  sko.rotation.y = retning * 0.6;
+  sko.scale.setScalar(0.65);
+  saetOpacitet(sko, 0);
   plads.add(sko);
-  pulsRing();
-  await tween(650, (t) => {
-    sko.scale.setScalar(Math.max(0.001, t));
-    sko.position.x = retning * 0.5 * (1 - Math.min(1, t));
-    sko.rotation.y = retning * 1.5 * (1 - Math.min(1, t));
-  }, easeOutBack);
+  await tween(620, (t) => {
+    sko.position.x = retning * 0.55 * (1 - t);
+    sko.rotation.y = retning * 0.6 * (1 - t);
+    sko.scale.setScalar(0.65 + 0.35 * t);
+    saetOpacitet(sko, Math.min(1, t * 1.6));
+  }, easeOutExpo);
   skifter = false;
 }
 
-function pulsRing() {
-  tween(700, (t) => {
-    const s = 1 + Math.sin(t * Math.PI) * 0.12;
-    ring.scale.set(s, s, s);
-  });
-}
+/* ---------------- Produktark ---------------- */
+$("#swatches").innerHTML = SKO.map(
+  (s, i) => `<button class="swatch" role="tab" aria-label="${s.farve}" style="--c:#${s.farver.overdel.toString(16).padStart(6, "0")}" data-i="${i}"></button>`
+).join("");
+$("#swatches").addEventListener("click", (e) => {
+  const b = e.target.closest(".swatch");
+  if (b) visSko(+b.dataset.i, +b.dataset.i > index ? 1 : -1);
+});
+$("#naeste").addEventListener("click", () => visSko(index + 1, 1));
+$("#forrige").addEventListener("click", () => visSko(index - 1, -1));
+$("#koeb").addEventListener("click", () => toast(`<i class="ph-bold ph-check"></i>${SKO[index].navn} ligger i kurven`));
 
 function opdaterInfo() {
   const d = SKO[index];
-  const info = $(".info");
+  const info = $(".ark-info");
   info.classList.add("skift");
   setTimeout(() => {
     $("#navn").textContent = d.navn;
     $("#farve").textContent = d.farve;
     $("#pris").textContent = d.pris;
     info.classList.remove("skift");
-  }, 180);
-  document.querySelectorAll("#prikker span").forEach((p, i) => p.classList.toggle("aktiv", i === index));
+  }, 160);
+  document.querySelectorAll(".swatch").forEach((s, i) => s.setAttribute("aria-selected", i === index));
 }
 
-$("#prikker").innerHTML = SKO.map(() => "<span></span>").join("");
-$("#naeste").addEventListener("click", () => visSko(index + 1, 1));
-$("#forrige").addEventListener("click", () => visSko(index - 1, -1));
-$("#koeb").addEventListener("click", () =>
-  toast(`Demo: ${SKO[index].navn} lagt i kurven`)
-);
-
-function toast(tekst) {
+function toast(html) {
   const t = $("#toast");
-  t.textContent = tekst;
+  t.innerHTML = html;
   t.classList.add("vis");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => t.classList.remove("vis"), 2200);
 }
 
-/* ------------------------------------------------------------------ */
-/* Fingerstyring: træk = drej, hurtigt swipe = næste/forrige            */
-/* ------------------------------------------------------------------ */
-let fart = 0;           // drejehastighed fra fingeren (rad pr. frame)
-let sidstRoert = 0;
+let guideVist = false;
+function visGuide() {
+  if (guideVist) return;
+  guideVist = true;
+  $("#guide").classList.add("vis");
+  setTimeout(skjulGuide, 3200);
+}
+function skjulGuide() { $("#guide").classList.remove("vis"); }
+
+/* ---------------- Fingerstyring ---------------- */
+// Træk = drej (med efterløb), hurtigt swipe = næste/forrige, to fingre = zoom
+let fart = 0;
+let sidstRoert = -1e9;
 (() => {
-  const flade = $("#oplevelse");
-  let ned = null;
+  const flade = $("#scene");
+  const fingre = new Map();
+  let start = null, pinch = null;
+
   flade.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".kort, .topbar")) return;
-    ned = { x: e.clientX, sx: e.clientX, t: performance.now() };
+    flade.setPointerCapture(e.pointerId);
+    fingre.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (fingre.size === 1) start = { x: e.clientX, y: e.clientY, t: performance.now() };
+    if (fingre.size === 2) {
+      const [a, b] = [...fingre.values()];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom };
+      start = null;
+    }
   });
   flade.addEventListener("pointermove", (e) => {
-    if (!ned) return;
-    const dx = e.clientX - ned.x;
-    ned.x = e.clientX;
-    drejeskive.rotation.y += dx * 0.012;
-    fart = dx * 0.012;
-    sidstRoert = performance.now();
+    const f = fingre.get(e.pointerId);
+    if (!f) return;
+    const dx = e.clientX - f.x;
+    f.x = e.clientX; f.y = e.clientY;
+    if (pinch && fingre.size === 2) {
+      const [a, b] = [...fingre.values()];
+      zoom = THREE.MathUtils.clamp(pinch.zoom * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), 0.6, 1.8);
+      return;
+    }
+    if (fingre.size === 1) {
+      drejeskive.rotation.y += dx * 0.011;
+      fart = dx * 0.011;
+      sidstRoert = performance.now();
+      skjulGuide();
+    }
   });
   const slip = (e) => {
-    if (!ned) return;
-    const dx = e.clientX - ned.sx;
-    const dt = performance.now() - ned.t;
-    if (Math.abs(dx) > 70 && dt < 300) {
+    fingre.delete(e.pointerId);
+    if (fingre.size < 2) pinch = null;
+    if (!start || fingre.size) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    const dt = performance.now() - start.t;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 280) {
       fart = 0;
       visSko(index + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
     }
-    ned = null;
+    start = null;
   };
   flade.addEventListener("pointerup", slip);
-  flade.addEventListener("pointercancel", () => (ned = null));
+  flade.addEventListener("pointercancel", slip);
 })();
 
-/* ------------------------------------------------------------------ */
-/* Plakatens orientering (bord vs. væg) ud fra telefonens hældning      */
-/* ------------------------------------------------------------------ */
-let beta = 60;
-window.addEventListener("deviceorientation", (e) => {
-  if (e.beta != null) beta = Math.abs(e.beta);
-});
+/* ---------------- Plakat på bord eller væg ---------------- */
+let beta = 70;
+window.addEventListener("deviceorientation", (e) => { if (e.beta != null) beta = Math.abs(e.beta); });
 async function spoergOmBevaegelse() {
   try {
     if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission) {
       await DeviceOrientationEvent.requestPermission();
     }
-  } catch (_) { /* uden tilladelse antager vi væg/skærm */ }
+  } catch (_) { /* uden tilladelse antages væg/skærm */ }
 }
 const QBORD = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
-const QVAEG = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, 0, 0));
-const PBORD = new THREE.Vector3(0, -0.08, 0.02);
-const PVAEG = new THREE.Vector3(0, -0.42, 0.3);
+const QVAEG = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.16, 0, 0));
+const PBORD = new THREE.Vector3(0, -0.06, 0.0);
+const PVAEG = new THREE.Vector3(0, -0.36, 0.16);
 
-/* ------------------------------------------------------------------ */
-/* Fælles render-loop                                                   */
-/* ------------------------------------------------------------------ */
+/* ---------------- Render-loop ---------------- */
+const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mSkala = new THREE.Vector3();
+
 function frame() {
   const nu = performance.now();
   const dt = Math.min(0.05, ur.getDelta());
   koerAnimationer(nu);
 
-  // Drej selv langsomt, når fingeren ikke rører
-  if (nu - sidstRoert > 1200) {
-    drejeskive.rotation.y += 0.45 * dt;
-  } else {
-    drejeskive.rotation.y += fart;
-    fart *= 0.92;
-  }
-  const svaev = Math.sin(nu * 0.0016) * 0.025;
-  plads.position.y = 0.03 + svaev;
+  // Drejning: efterløb fra fingeren, ellers langsom fremvisning
+  if (nu - sidstRoert > 1600 && !reduceret) drejeskive.rotation.y += 0.32 * dt;
+  else { drejeskive.rotation.y += fart; fart *= Math.pow(0.0025, dt); }
 
-  const p = partikler.geometry.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    let y = p.getY(i) + dt * 0.08;
-    if (y > 0.95) y = 0;
-    p.setY(i, y);
-  }
-  p.needsUpdate = true;
-  partikler.rotation.y += dt * 0.15;
+  const svaev = reduceret ? 0 : Math.sin(nu * 0.0014) * 0.012;
+  plads.position.y = 0.035 + svaev;
+
+  const zMaal = (modus === "ar" ? 0.62 : 1) * zoom;
+  scene3d.scale.setScalar(THREE.MathUtils.lerp(scene3d.scale.x, zMaal, daemp(10, dt)));
 
   if (modus === "ar") {
-    // Telefon holdt fladt (lille beta) => plakaten ligger på bordet
-    const maal = THREE.MathUtils.clamp((beta - 35) / 30, 0, 1);
-    tilt += (maal - tilt) * 0.05;
-    scenen.quaternion.slerpQuaternions(QBORD, QVAEG, tilt);
-    scenen.position.lerpVectors(PBORD, PVAEG, tilt);
+    // Følg plakaten blødt i stedet for at hoppe med hver tracking-måling
+    if (anker.group.visible) {
+      anker.group.matrix.decompose(mPos, mQuat, mSkala);
+      if (!harPose) {
+        foelger.position.copy(mPos); foelger.quaternion.copy(mQuat); foelger.scale.copy(mSkala);
+        harPose = true;
+      } else {
+        const k = daemp(14, dt);
+        foelger.position.lerp(mPos, k);
+        foelger.quaternion.slerp(mQuat, k);
+        foelger.scale.lerp(mSkala, k);
+      }
+      sidstSet = nu;
+    }
+    // Hold skoen et øjeblik, hvis trackingen kort taber plakaten, og fade så ud
+    const maal = nu - sidstSet < 500 ? 1 : 0;
+    const før = tilstede;
+    tilstede += (maal - tilstede) * daemp(maal ? 9 : 6, dt);
+    if (Math.abs(tilstede - før) > 0.001) saetOpacitet(scene3d, tilstede);
+    foelger.visible = tilstede > 0.01;
+    if (maal === 0 && tilstede < 0.05) harPose = false;
+
+    const tiltMaal = THREE.MathUtils.clamp((beta - 35) / 30, 0, 1);
+    tilt += (tiltMaal - tilt) * daemp(3, dt);
+    scene3d.quaternion.slerpQuaternions(QBORD, QVAEG, tilt);
+    scene3d.position.lerpVectors(PBORD, PVAEG, tilt);
   }
+
+  // Skyggen bliver lysere, når skoen svæver højere, og følger fade'en i AR
+  skygge.material.opacity = (1 - svaev * 12) * (modus === "ar" ? tilstede : 1);
   renderer.render(scene, camera);
 }
 
-/* ------------------------------------------------------------------ */
-/* AR-tilstand (MindAR billedgenkendelse)                               */
-/* ------------------------------------------------------------------ */
+/* ---------------- AR ---------------- */
 async function startAR() {
   modus = "ar";
   visSkaerm("oplevelse");
-  $("#oplevelse").classList.remove("tredje");
+  $("#oplevelse").classList.remove("studie");
   $("#tilstand").textContent = "AR";
   $("#loader").classList.add("vis");
-  $("#kort").classList.add("skjult");
+  $("#ark").classList.add("skjult");
   $("#scan").classList.remove("skjult");
 
   try {
@@ -308,32 +453,38 @@ async function startAR() {
     mindar = new MindARThree({
       container: $("#scene"),
       imageTargetSrc: "assets/plakat.mind",
-      uiLoading: "no",
-      uiScanning: "no",
-      uiError: "no",
-      filterMinCF: 0.0001,
-      filterBeta: 0.004,
+      uiLoading: "no", uiScanning: "no", uiError: "no",
+      filterMinCF: 0.0001, filterBeta: 0.001,
+      warmupTolerance: 3, missTolerance: 6,
     });
     ({ renderer, scene, camera } = mindar);
     opsaetRenderer(renderer);
-    lys(scene, renderer);
+    lys(scene, renderer, 0.9);
 
-    const anker = mindar.addAnchor(0);
-    const s = byggScene();
-    s.scale.setScalar(0.7);
-    anker.group.add(s);
+    anker = mindar.addAnchor(0);
+    foelger = new THREE.Group();
+    foelger.matrixAutoUpdate = true;
+    scene.add(foelger);
+    foelger.add(byggScene(false));
+    saetOpacitet(scene3d, 0);
+    foelger.visible = false;
 
     anker.onTargetFound = () => {
-      synlig = true;
       $("#scan").classList.add("skjult");
-      $("#kort").classList.remove("skjult");
-      if (!plads.children.length) visSko(index, 1);
-      else pulsRing();
+      $("#ark").classList.remove("skjult");
+      if (foersteFund) {
+        foersteFund = false;
+        visSko(index, 1, false).then(visGuide);
+      }
+      ringPuls();
     };
     anker.onTargetLost = () => {
-      synlig = false;
-      $("#scan").classList.remove("skjult");
-      $("#kort").classList.add("skjult");
+      setTimeout(() => {
+        if (performance.now() - sidstSet > 450) {
+          $("#scan").classList.remove("skjult");
+          $("#ark").classList.add("skjult");
+        }
+      }, 500);
     };
 
     hentSko(index);
@@ -342,86 +493,90 @@ async function startAR() {
     renderer.setAnimationLoop(frame);
   } catch (err) {
     console.error(err);
-    stopAlt();
+    stopOplevelse();
     visSkaerm("start");
-    toast("Kameraet kunne ikke starte – prøv 3D-visning");
+    pauseHero(false);
+    toast(`<i class="ph-bold ph-camera-slash"></i>Kameraet startede ikke. Prøv 3D-visningen`);
   } finally {
     $("#loader").classList.remove("vis");
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* 3D-tilstand (uden kamera og plakat)                                  */
-/* ------------------------------------------------------------------ */
-async function start3D() {
+/* ---------------- 3D uden kamera ---------------- */
+function start3D() {
   modus = "3d";
   visSkaerm("oplevelse");
-  $("#oplevelse").classList.add("tredje");
+  $("#oplevelse").classList.add("studie");
   $("#tilstand").textContent = "3D";
   $("#scan").classList.add("skjult");
-  $("#kort").classList.remove("skjult");
+  $("#ark").classList.remove("skjult");
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   opsaetRenderer(renderer);
   $("#scene").appendChild(renderer.domElement);
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(35, 1, 0.01, 50);
-  lys(scene, renderer);
-
-  const s = byggScene();
-  scene.add(s);
-  tilpasStoerrelse();
-  window.addEventListener("resize", tilpasStoerrelse);
+  camera = new THREE.PerspectiveCamera(30, 1, 0.01, 50);
+  lys(scene, renderer, 1.1);
+  scene.add(byggScene(true));
+  tilpas3D();
+  window.addEventListener("resize", tilpas3D);
 
   ur = new THREE.Clock();
   renderer.setAnimationLoop(frame);
-  synlig = true;
-  visSko(index, 1);
+  visSko(index, 1, false).then(visGuide);
+  ringPuls();
 }
 
-function tilpasStoerrelse() {
+function tilpas3D() {
   if (modus !== "3d") return;
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
-  // Skoen fylder bredden på mobil og lidt mindre på store skærme
-  const afstand = w < h ? 4.6 : 3.0;
-  camera.position.set(0, afstand * 0.3, afstand);
-  camera.lookAt(0, w < h ? 0.05 : 0.2, 0);
-  camera.updateProjectionMatrix();
+  // Lidt luft over produktarket på mobil
+  kameraTilpas(camera, w < h ? 1.5 : 2.2, w < h ? 0.02 : 0.15);
 }
 
-/* ------------------------------------------------------------------ */
-/* Navigation                                                           */
-/* ------------------------------------------------------------------ */
+/* ---------------- Navigation ---------------- */
 function visSkaerm(id) {
   document.querySelectorAll(".skaerm").forEach((s) => s.classList.toggle("aktiv", s.id === id));
 }
 
-function stopAlt() {
+function stopOplevelse() {
   if (renderer) renderer.setAnimationLoop(null);
-  if (mindar) {
-    try { mindar.stop(); } catch (_) {}
-    mindar = null;
-  }
+  if (mindar) { try { mindar.stop(); } catch (_) {} mindar = null; }
   if (renderer) renderer.dispose();
+  window.removeEventListener("resize", tilpas3D);
   $("#scene").innerHTML = "";
   plads?.clear();
   animationer.length = 0;
   skifter = false;
-  synlig = false;
+  harPose = false;
+  foersteFund = true;
+  tilstede = 0;
+  zoom = 1;
   modus = null;
 }
 
 $("#startAR").addEventListener("click", async () => {
   await spoergOmBevaegelse();
+  pauseHero(true);
   startAR();
 });
-$("#start3D").addEventListener("click", start3D);
+$("#start3D").addEventListener("click", () => {
+  pauseHero(true);
+  start3D();
+});
 $("#tilbage").addEventListener("click", () => {
-  stopAlt();
+  stopOplevelse();
   visSkaerm("start");
+  pauseHero(false);
 });
 
-// Direkte link til 3D-tilstand: index.html#3d
+/* ---------------- Start ---------------- */
+opdaterInfo();
+Promise.race([
+  Promise.all([document.fonts.ready, startHero()]),
+  new Promise((ok) => setTimeout(ok, 2500)),
+]).then(() => $("#start").classList.add("klar"));
+
 if (location.hash === "#3d") start3D();

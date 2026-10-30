@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0a0a0a">
-  <title>Step Into AR</title>
+  <meta name="theme-color" content="#0b0b0c">
+  <meta name="description" content="Scan plakaten og se Air Pulse-kollektionen i 3D på dit eget bord. Studieprojekt.">
+  <title>Air Pulse · Step into AR</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..900;1,62..125,400..900&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <script type="importmap">
   {
     "imports": {
@@ -20,58 +22,97 @@
   </script>
 </head>
 <body>
-  <!-- Startskærm -->
-  <section id="start" class="skaerm aktiv">
-    <div class="start-top">
-      <span class="brand" data-brand></span>
-      <span class="pille">AR</span>
-    </div>
-    <div class="start-midt">
-      <p class="overline">Ny kollektion · 2026</p>
-      <h1>Step<br>into<br><span class="volt">AR.</span></h1>
-      <p class="intro">Peg kameraet mod kampagneplakaten og se skoene springe ud i den virkelige verden. Swipe for at skifte model.</p>
-    </div>
-    <div class="start-bund">
-      <button id="startAR" class="knap primaer">Start AR-oplevelse</button>
-      <button id="start3D" class="knap sekundaer">Se i 3D uden plakat</button>
-      <p class="disclaimer" data-disclaimer></p>
-    </div>
-  </section>
+  <div class="korn" aria-hidden="true"></div>
 
-  <!-- AR / 3D-visning -->
-  <section id="oplevelse" class="skaerm">
+  <!-- ============ Landing ============ -->
+  <main id="start" class="skaerm aktiv">
+    <header class="nav">
+      <span class="ordmaerke" data-brand></span>
+      <span class="nav-label">Air Pulse</span>
+    </header>
+
+    <div class="hero">
+      <h1 class="hero-titel" aria-label="Step into AR.">
+        <span class="linje"><span>Step into</span></span>
+        <span class="linje"><span><em>AR.</em></span></span>
+      </h1>
+
+      <div class="hero-sko" id="heroSko" aria-hidden="true"></div>
+
+      <div class="hero-bund">
+        <p class="hero-tekst">Fire farver af Air Pulse, direkte på dit bord. Scan plakaten og drej skoen med fingeren.</p>
+        <div class="handlinger">
+          <button id="startAR" class="knap knap-primaer">
+            <i class="ph-bold ph-scan"></i><span>Start AR</span>
+          </button>
+          <button id="start3D" class="knap knap-sekundaer">
+            <i class="ph ph-cube"></i><span>Se i 3D</span>
+          </button>
+        </div>
+
+        <!-- Vises kun på computer: AR giver mest mening på telefonen -->
+        <div class="telefon-kort">
+          <div class="qr" id="qrDesktop"></div>
+          <div>
+            <p class="telefon-titel">Bedst på telefonen</p>
+            <p class="telefon-tekst">Scan koden, og peg kameraet mod plakaten på skærmen.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="disclaimer" data-disclaimer></p>
+  </main>
+
+  <!-- ============ Oplevelse (AR eller 3D) ============ -->
+  <section id="oplevelse" class="skaerm" aria-label="Produktvisning">
     <div id="scene"></div>
 
     <div class="topbar">
-      <button id="tilbage" class="ikon" aria-label="Tilbage">&#8592;</button>
-      <span class="brand" data-brand></span>
-      <span class="pille" id="tilstand">AR</span>
+      <button id="tilbage" class="ikonknap" aria-label="Tilbage"><i class="ph ph-arrow-left"></i></button>
+      <span class="ordmaerke" data-brand></span>
+      <span class="tilstand" id="tilstand">AR</span>
     </div>
 
-    <div id="scan" class="scan">
-      <div class="ramme"><i></i><i></i><i></i><i></i><div class="linje"></div></div>
-      <p>Peg kameraet mod plakaten</p>
-    </div>
-
-    <div id="kort" class="kort">
-      <div class="kort-top">
-        <button class="pil" id="forrige" aria-label="Forrige sko">&#8249;</button>
-        <div class="info">
-          <p class="farve" id="farve"></p>
-          <h2 id="navn"></h2>
-          <p class="pris" id="pris"></p>
-        </div>
-        <button class="pil" id="naeste" aria-label="Næste sko">&#8250;</button>
+    <div id="scan" class="scan" aria-live="polite">
+      <div class="scan-ramme">
+        <img src="assets/plakat.png" alt="" class="scan-plakat">
+        <i></i><i></i><i></i><i></i>
       </div>
-      <div class="prikker" id="prikker"></div>
-      <button class="knap primaer" id="koeb">Køb nu</button>
-      <p class="hint">Swipe for næste sko · træk for at dreje</p>
+      <p class="scan-tekst">Find plakaten og hold telefonen roligt</p>
     </div>
 
-    <div id="toast" class="toast"></div>
-    <div id="loader" class="loader"><div></div><p>Starter kamera…</p></div>
+    <div id="guide" class="guide" aria-hidden="true">
+      <i class="ph ph-hand-swipe-right"></i>
+      <span>Swipe for næste farve</span>
+    </div>
+
+    <div id="ark" class="ark">
+      <div class="ark-top">
+        <div class="ark-info">
+          <h2 id="navn"></h2>
+          <p class="ark-meta"><span id="farve"></span><span id="pris" class="pris"></span></p>
+        </div>
+        <div class="ark-pile">
+          <button class="ikonknap lille" id="forrige" aria-label="Forrige sko"><i class="ph ph-caret-left"></i></button>
+          <button class="ikonknap lille" id="naeste" aria-label="Næste sko"><i class="ph ph-caret-right"></i></button>
+        </div>
+      </div>
+      <div class="swatches" id="swatches" role="tablist" aria-label="Vælg farve"></div>
+      <button class="knap knap-primaer fuld" id="koeb">
+        <i class="ph-bold ph-bag"></i><span>Læg i kurv</span>
+      </button>
+    </div>
+
+    <div id="loader" class="loader">
+      <div class="loader-plakat"><img src="assets/plakat.png" alt=""></div>
+      <p>Starter kameraet</p>
+    </div>
   </section>
 
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

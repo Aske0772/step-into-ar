@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Plakat-generator</title>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..900;1,62..125,400..900&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     body { margin: 0; background: #222; color: #eee; font: 14px Inter, sans-serif; display: grid; gap: 12px; padding: 16px; }
     canvas#plakat { width: 360px; height: auto; box-shadow: 0 10px 40px #000; }
@@ -60,75 +60,59 @@
       return r.domElement;
     }
 
+    // Samme typografi som siden: Archivo (bred, kraftig) + Geist
+    const display = (stoerrelse, kursiv = false, vaegt = 900) =>
+      `${kursiv ? "italic " : ""}${vaegt} ${stoerrelse}px Archivo`;
+    const tekst = (stoerrelse, vaegt = 500) => `${vaegt} ${stoerrelse}px Geist`;
+
     async function tegnPlakat() {
-      await document.fonts.load("230px 'Archivo Black'");
-      await document.fonts.load("800 28px Inter");
+      await Promise.all([
+        document.fonts.load(display(200)), document.fonts.load(display(200, true)),
+        document.fonts.load(tekst(28)), document.fonts.load(tekst(28, 600)),
+      ]);
       const c = document.getElementById("plakat");
       const g = c.getContext("2d");
       seed = 7;
 
       // Baggrund
-      g.fillStyle = "#0a0a0a";
+      g.fillStyle = "#0b0b0c";
       g.fillRect(0, 0, W, H);
 
       // Volt-bånd på skrå bag skoen
       g.save();
-      g.translate(W / 2, 980);
-      g.rotate(-0.32);
+      g.translate(W / 2, 1000);
+      g.rotate(-0.3);
       g.fillStyle = VOLT;
-      g.fillRect(-1000, -170, 2000, 340);
-      g.fillStyle = "#0a0a0a";
-      g.font = "800 34px Inter";
-      const baandTekst = "AIR PULSE  ✕  STEP INTO AR  ✕  ";
+      g.fillRect(-1000, -160, 2000, 320);
+      g.fillStyle = "#101300";
+      g.fontStretch = "expanded";
+      g.font = display(40, true, 800);
+      const baandTekst = "AIR PULSE   STEP INTO AR   ";
       const bredde = g.measureText(baandTekst).width;
-      for (let x = -1000; x < 1000; x += bredde) g.fillText(baandTekst, x, 150);
+      for (let x = -1000; x < 1000; x += bredde) g.fillText(baandTekst, x, 140);
       g.restore();
-
-      // Små kryds og tal over hele plakaten (giver kameraet mange genkendelsespunkter)
-      g.strokeStyle = "rgba(255,255,255,0.35)";
-      g.lineWidth = 3;
-      g.fillStyle = "rgba(255,255,255,0.45)";
-      g.font = "600 18px Inter";
-      for (let i = 0; i < 70; i++) {
-        const x = 40 + rnd() * (W - 80), y = 40 + rnd() * (H - 80);
-        if (rnd() < 0.6) {
-          g.beginPath();
-          g.moveTo(x - 9, y); g.lineTo(x + 9, y);
-          g.moveTo(x, y - 9); g.lineTo(x, y + 9);
-          g.stroke();
-        } else {
-          g.fillText(String(Math.floor(rnd() * 99)).padStart(2, "0"), x, y);
-        }
-      }
 
       // Overskrift
-      g.fillStyle = "#f5f5f2";
-      g.font = "230px 'Archivo Black'";
-      g.fillText("STEP", 60, 330);
-      g.fillText("INTO", 60, 540);
+      g.fontStretch = "semi-expanded";
+      g.fillStyle = "#f5f5f0";
+      g.font = display(205);
+      g.fillText("STEP", 56, 360);
+      g.fillText("INTO", 56, 545);
       g.fillStyle = VOLT;
-      g.fillText("AR.", 60, 750);
+      g.font = display(205, true);
+      g.fillText("AR.", 56, 730);
 
-      // Brand + årstal
-      g.fillStyle = "#f5f5f2";
-      g.font = "40px 'Archivo Black'";
-      g.fillText(BRAND.navn, 60, 110);
-      g.fillStyle = VOLT;
-      g.beginPath();
-      g.roundRect(W - 230, 72, 170, 52, 26);
-      g.fill();
-      g.fillStyle = "#0a0a0a";
-      g.font = "800 24px Inter";
-      g.fillText("AR · 2026", W - 205, 107);
-
-      // Lodret tekst i højre side
-      g.save();
-      g.translate(W - 60, 300);
-      g.rotate(Math.PI / 2);
-      g.fillStyle = "rgba(255,255,255,0.7)";
-      g.font = "800 26px Inter";
-      g.fillText("AIR PULSE — KOLLEKTION 01 / 04", 0, 0);
-      g.restore();
+      // Ordmærke + produktnavn
+      g.fontStretch = "ultra-expanded";
+      g.fillStyle = "#f5f5f0";
+      g.font = display(44, true);
+      g.fillText(BRAND.navn, 60, 120);
+      g.fontStretch = "normal";
+      g.textAlign = "right";
+      g.fillStyle = "rgba(245,245,240,0.62)";
+      g.font = tekst(28);
+      g.fillText("Air Pulse", W - 60, 116);
+      g.textAlign = "left";
 
       // Skoen
       const sko = await renderSko();
@@ -139,30 +123,34 @@
       g.drawImage(sko, 25, 640);
       g.restore();
 
-      // Farveprikker for kollektionen
+      // Farvefelter for kollektionen
       const farver = SKO.map((s) => "#" + s.farver.overdel.toString(16).padStart(6, "0"));
       farver.forEach((f, i) => {
         g.beginPath();
-        g.arc(80 + i * 64, 1420, 22, 0, Math.PI * 2);
+        g.arc(84 + i * 68, 1436, 24, 0, Math.PI * 2);
         g.fillStyle = f;
         g.fill();
-        g.lineWidth = 4;
-        g.strokeStyle = i === 0 ? VOLT : "rgba(255,255,255,0.4)";
+        g.lineWidth = 3;
+        g.strokeStyle = "rgba(255,255,255,0.25)";
         g.stroke();
       });
 
       // Bundtekst
-      g.fillStyle = "#f5f5f2";
-      g.font = "800 30px Inter";
-      g.fillText("SCAN  ·  SWIPE  ·  STEP", 60, 1520);
-      g.fillStyle = "rgba(255,255,255,0.6)";
-      g.font = "400 22px Inter";
-      g.fillText("Scan QR-koden og peg kameraet mod plakaten.", 60, 1365);
-      g.textAlign = "right";
-      g.font = "600 16px Inter";
-      g.fillStyle = "rgba(255,255,255,0.45)";
-      g.fillText(BRAND.disclaimer, W - 60, 1560);
-      g.textAlign = "left";
+      g.fillStyle = "#f5f5f0";
+      g.font = tekst(34, 600);
+      g.fillText("Scan, og se skoen på dit bord.", 60, 1370);
+      g.fillStyle = "rgba(245,245,240,0.4)";
+      g.font = tekst(18);
+      g.fillText(BRAND.disclaimer, 60, 1548);
+
+      // Filmkorn over det hele: giver plakaten tekstur og kameraet flere genkendelsespunkter
+      const pix = g.getImageData(0, 0, W, H);
+      const d = pix.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const n = (rnd() - 0.5) * 34;
+        d[i] += n; d[i + 1] += n; d[i + 2] += n;
+      }
+      g.putImageData(pix, 0, 0);
       return c;
     }
 

@@ -4,16 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Plakat med QR</title>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..900;1,62..125,400..900&family=Geist:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
   <style>
     :root { --volt: #d4ff00; }
     * { box-sizing: border-box; margin: 0; }
-    body { background: #0a0a0a; color: #f5f5f2; font-family: Inter, sans-serif; padding: 24px 16px; }
+    body { background: #0a0a0a; color: #f5f5f2; font-family: Geist, sans-serif; padding: 24px 16px; }
     .ark { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; max-width: 980px; margin: 0 auto; align-items: center; }
     .plakat { width: 100%; height: auto; display: block; border-radius: 6px; }
     .qr-boks { background: #fff; color: #0a0a0a; border-radius: 20px; padding: 22px; text-align: center; }
-    .qr-boks h1 { font-family: "Archivo Black", sans-serif; font-size: 26px; line-height: 1; text-transform: uppercase; }
+    .qr-boks h1 { font-family: Archivo, sans-serif; font-weight: 900; font-style: italic; font-size: 26px; line-height: 1; text-transform: uppercase; }
     .qr-boks p { font-size: 14px; margin-top: 10px; line-height: 1.4; }
     #qr svg { width: 100%; height: auto; margin-top: 14px; }
     .trin { text-align: left; margin-top: 14px; padding-left: 18px; font-size: 14px; line-height: 1.6; }
@@ -28,14 +28,14 @@
 </head>
 <body>
   <div class="ark">
-    <img class="plakat" src="assets/plakat.png" alt="Kampagneplakat – Step Into AR">
+    <img class="plakat" src="assets/plakat.png" alt="Kampagneplakat: Step into AR">
     <div class="qr-boks">
-      <h1>Scan &amp; step into AR</h1>
+      <h1>Step into AR</h1>
       <p>Prøv oplevelsen på din egen telefon.</p>
       <div id="qr"></div>
       <ol class="trin">
         <li>Scan QR-koden</li>
-        <li>Tryk <b>Start AR-oplevelse</b> og tillad kamera</li>
+        <li>Tryk <b>Start AR</b> og tillad kameraet</li>
         <li>Peg kameraet mod plakaten</li>
         <li>Swipe for at skifte sko</li>
       </ol>
